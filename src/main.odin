@@ -1401,6 +1401,10 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 		audio_play_bank(&rt.audio, app.ui_sfx_bank)
 	} else if !app.ui_sfx_suppress {
 		if bank, has_bank := audio_cue_for_transition(intent, mode_was, app.mode); has_bank do audio_play_bank(&rt.audio, bank)
+		if app.coop_ui.knock_cue {
+			app.coop_ui.knock_cue = false
+			audio_play_bank(&rt.audio, .Ui_Confirm)
+		}
 	}
 	if rt.platform.mobile && !rt.platform.resume_gate && mode_was != .Playing && app.mode == .Playing do audio_resume(&rt.audio)
 	if app.mode == .Save_Wait && mode_was != .Save_Wait {
@@ -2121,7 +2125,8 @@ collect_intent :: proc(app: ^App, view: ^View, controller: ^Controller_Runtime) 
 }
 
 // Typed text for the co-op setup fields: printable characters this frame,
-// held-backspace repeats, and Ctrl+V paste, bounded to the intent buffer.
+// held-backspace repeats, and (native) Ctrl+V paste, bounded to the intent
+// buffer.
 collect_coop_text :: proc(app: ^App, intent: ^Intent, ctrl_down: bool) {
 	if !app.coop_ui.editing do return
 	for {
@@ -2150,3 +2155,4 @@ collect_coop_text :: proc(app: ^App, intent: ^Intent, ctrl_down: bool) {
 		}
 	}
 }
+

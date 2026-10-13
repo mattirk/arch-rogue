@@ -61,9 +61,21 @@ coop_consent_row_at :: proc(point: rl.Vector2) -> (int, bool) {
 	return 0, false
 }
 
+COOP_LOBBY_PANEL_W :: 760
+COOP_LOBBY_PANEL_H :: 600
+
+// Seven rows at most (host during admission); they end at y+526 and the two
+// hint lines sit below them inside the 600-tall panel.
 coop_lobby_row_rect :: proc(index: int) -> rl.Rectangle {
-	panel := coop_panel(760, 560)
-	return {panel.x + 40, panel.y + 250 + f32(index) * 42, panel.width - 80, 36}
+	panel := coop_panel(COOP_LOBBY_PANEL_W, COOP_LOBBY_PANEL_H)
+	return {panel.x + 40, panel.y + 264 + f32(index) * 38, panel.width - 80, 32}
+}
+
+// The room-code inset at the top of the lobby.
+@(private = "file")
+coop_lobby_code_rect :: proc() -> rl.Rectangle {
+	panel := coop_panel(COOP_LOBBY_PANEL_W, COOP_LOBBY_PANEL_H)
+	return {panel.x + 40, panel.y + 36, panel.width - 80, 84}
 }
 
 coop_lobby_row_at :: proc(point: rl.Vector2, count: int) -> (int, bool) {
@@ -164,16 +176,39 @@ draw_coop_consent :: proc(app: ^App, assets: ^Assets) {
 }
 
 @(private = "file")
-draw_seal :: proc(assets: ^Assets, code: string, center_x, y: f32) {
+draw_seal :: proc(assets: ^Assets, code: string, left_x, y, size: f32) {
 	first, second := np.room_code_seal(code)
 	names := [2]string{np.SEAL_SIGILS[first], np.SEAL_SIGILS[second]}
 	for name, i in names {
-		x := center_x - 70 + f32(i) * 80
+		x := left_x + f32(i) * (size + 12)
 		drawn := false
-		if glyph, found := ui_seal_sigil_glyph(assets, name); found do drawn = draw_ui_glyph(glyph, {x, y, 56, 56}, COOP_ACCENT)
-		if !drawn do rl.DrawRectangleLinesEx({x, y, 56, 56}, 1, rl.Fade(COOP_ACCENT, .6))
-		label := fmt.ctprintf("%s", name)
-		ui_draw_text(label, i32(x + 28) - ui_measure_text(label, 13) / 2, i32(y + 60), 13, COLOR_TEXT_DIM)
+		if glyph, found := ui_seal_sigil_glyph(assets, name); found do drawn = draw_ui_glyph(glyph, {x, y, size, size}, COOP_ACCENT)
+		if !drawn do rl.DrawRectangleLinesEx({x, y, size, size}, 1, rl.Fade(COOP_ACCENT, .6))
+	}
+}
+
+// The room code as large, letter-spaced glyphs; returns the width drawn.
+@(private = "file")
+draw_big_code :: proc(code: string, x, y: f32, size: i32, color: rl.Color) -> f32 {
+	gap := f32(size) * .28
+	cursor := x
+	for i in 0 ..< len(code) {
+		glyph := fmt.ctprintf("%c", code[i])
+		ui_draw_text(glyph, i32(cursor), i32(y), size, color)
+		cursor += f32(ui_measure_text(glyph, size)) + gap
+	}
+	return cursor - gap - x
+}
+
+// Checklist box: filled accent when done, outlined otherwise.
+@(private = "file")
+draw_check_box :: proc(x, y, size: f32, done: bool, current: bool) {
+	rect := rl.Rectangle{x, y, size, size}
+	if done {
+		rl.DrawRectangleRec(rect, COOP_ACCENT)
+		rl.DrawRectangleRec({x + size * .3, y + size * .3, size * .4, size * .4}, rl.Color{20, 16, 24, 255})
+	} else {
+		rl.DrawRectangleLinesEx(rect, 1, current ? COOP_ACCENT : rl.Fade(COLOR_TEXT_DIM, .7))
 	}
 }
 
@@ -183,68 +218,154 @@ draw_coop_lobby :: proc(app: ^App, assets: ^Assets) {
 	draw_menu_background(assets, false)
 	s := &app.coop.session
 	ui := &app.coop_ui
-	panel := coop_panel(760, 560)
+	panel := coop_panel(COOP_LOBBY_PANEL_W, COOP_LOBBY_PANEL_H)
 	draw_menu_panel_chrome(assets, panel)
 	center := panel.x + panel.width * .5
 	code := net_session_room_code(s)
-	draw_centered(fmt.ctprintf("ROOM  %s", code), center, panel.y + 26, 34, COLOR_TITLE)
-	draw_seal(assets, code, center, panel.y + 70)
-	if s.role == .Host {
-		draw_centered("Share the code; your partner should see the same two sigils", center, panel.y + 150, 14, COLOR_TEXT_DIM)
-	} else {
-		draw_centered("Check that the host sees the same two sigils", center, panel.y + 150, 14, COLOR_TEXT_DIM)
+	host_seat := &s.seats[0]
+	partner := &s.seats[1]
+	local_slot := net_session_local_slot(s)
+	local := &s.seats[local_slot]
+	is_host := s.role == .Host
+	knocking := partner.present && !partner.admitted
+	both_ready := host_seat.present && partner.present && host_seat.ready && partner.ready
+	pulse := f32(0.55) + 0.45 * f32((app.tick / 20) % 2)
+	// The partner is ready and only this player's readiness is missing: the
+	// Ready row pulses the same way the Accept row does for a knock.
+	other := &s.seats[1 - local_slot]
+	awaiting_me := other.present && other.admitted && other.ready && !local.ready && !(is_host && knocking)
+
+	// ---- room code inset: the one thing to share, drawn big.
+	inset := coop_lobby_code_rect()
+	inset_asset := ui_chrome_asset(assets, .Menu_Panel_Inset)
+	if !draw_ui_chrome(inset_asset, inset) {
+		rl.DrawRectangleRec(inset, rl.Fade(rl.BLACK, .35))
+		rl.DrawRectangleLinesEx(inset, 1, rl.Fade(COLOR_TEXT_DIM, .5))
 	}
-	// Seats.
+	ui_draw_text("ROOM CODE", i32(inset.x + 24), i32(inset.y + 10), 13, COLOR_TEXT_DIM)
+	_ = draw_big_code(code, inset.x + 24, inset.y + 26, 44, COLOR_TITLE)
+	// Seal marks sit at the inset's right edge (two 44 px glyphs, 12 px apart).
+	draw_seal(assets, code, inset.x + inset.width - 24 - (44 * 2 + 12), inset.y + 20, 44)
+
+	// ---- checklist: the three things that must happen, in order.
+	steps_done := [3]bool{partner.present, partner.admitted, both_ready}
+	step_labels := [3]cstring{"Partner joined", "Host accepted", "Both ready"}
+	current_step := 3
+	for done, i in steps_done do if !done {current_step = i; break}
+	step_w := (panel.width - 80) / 3
+	for i in 0 ..< 3 {
+		x := panel.x + 40 + f32(i) * step_w
+		y := panel.y + 134
+		is_current := i == current_step
+		draw_check_box(x, y + 1, 14, steps_done[i], is_current)
+		label := step_labels[i]
+		if i == 0 && !steps_done[0] do label = "Waiting for a partner"
+		ui_draw_text(label, i32(x + 22), i32(y - 1), 15, steps_done[i] ? COLOR_TEXT : (is_current ? COOP_ACCENT : COLOR_TEXT_DIM))
+	}
+
+	// ---- seats.
 	for slot in 0 ..< MAX_PLAYERS {
 		seat := &s.seats[slot]
-		x := panel.x + 60 + f32(slot) * (panel.width - 120) * .5
-		y := panel.y + 178
+		col_w := (panel.width - 80) * .5
+		card := rl.Rectangle{panel.x + 40 + f32(slot) * col_w, panel.y + 162, col_w - 10, 86}
+		is_knock := slot == 1 && knocking
+		border := rl.Fade(COLOR_TEXT_DIM, .35)
+		if is_knock do border = rl.Fade(COOP_ACCENT, pulse)
+		else if seat.present && seat.ready do border = rl.Fade(COOP_ACCENT, .6)
+		rl.DrawRectangleLinesEx(card, is_knock ? 2 : 1, border)
+		x := card.x + 12
+		y := card.y + 8
 		role: cstring = slot == 0 ? "HOST" : "PARTNER"
-		ui_draw_text(role, i32(x), i32(y), 14, COLOR_TEXT_DIM)
+		ui_draw_text(role, i32(x), i32(y), 13, COLOR_TEXT_DIM)
 		if !seat.present {
-			ui_draw_text("Waiting for a partner...", i32(x), i32(y + 20), 18, COLOR_TEXT_DIM)
+			ui_draw_text("Waiting for a partner...", i32(x), i32(y + 22), 17, COLOR_TEXT_DIM)
 			continue
 		}
-		name := fmt.ctprintf("%s%s", net_seat_name(seat), slot == net_session_local_slot(s) ? " (you)" : "")
+		name := fmt.ctprintf("%s%s", net_seat_name(seat), slot == local_slot ? " (you)" : "")
 		ui_draw_text(name, i32(x), i32(y + 20), 18, COLOR_TEXT)
 		status: cstring
+		status_color := COLOR_TEXT_DIM
 		switch {
-		case !seat.connected: status = "reconnecting..."
-		case !seat.admitted: status = "asks to join"
-		case seat.ready: status = fmt.ctprintf("%s - ready", ARCHETYPES[seat.archetype].name)
+		case !seat.connected: status = "Reconnecting..."
+		case !seat.admitted:
+			status = is_host ? "Wants to join. Accept them below" : "Waiting for the host to accept you"
+			status_color = COOP_ACCENT
 		case seat.chosen: status = fmt.ctprintf("%s", ARCHETYPES[seat.archetype].name)
-		case: status = "choosing"
+		case: status = "Choosing an archetype"
 		}
-		ui_draw_text(status, i32(x), i32(y + 44), 15, seat.ready ? COOP_ACCENT : COLOR_TEXT_DIM)
+		ui_draw_text(status, i32(x), i32(y + 46), 14, status_color)
+		// Ready badge, top right of the card.
+		if seat.admitted {
+			badge: cstring = seat.ready ? "READY" : "NOT READY"
+			bw := ui_measure_text(badge, 12)
+			bx := card.x + card.width - f32(bw) - 24
+			draw_check_box(bx - 4, y + 2, 12, seat.ready, false)
+			ui_draw_text(badge, i32(bx + 12), i32(y), 12, seat.ready ? COOP_ACCENT : COLOR_TEXT_DIM)
+		}
 	}
+
+	// ---- rows.
 	rows: [len(Coop_Lobby_Row)]Coop_Lobby_Row
 	count := coop_lobby_rows(app, &rows)
-	local := &s.seats[net_session_local_slot(s)]
+	partner_name := net_seat_name(partner)
+	if partner_name == "" do partner_name = "your partner"
 	for i in 0 ..< count {
 		row := rows[i]
 		rect := coop_lobby_row_rect(i)
 		selected := ui_navigation_selected(app, ui.lobby_row == i)
 		content := draw_menu_row_chrome(assets, rect, selected)
 		color := selected ? COLOR_TITLE : COLOR_TEXT
-		ui_draw_text(COOP_LOBBY_LABELS[row], i32(content.x), i32(rect.y + 9), 17, color)
+		label := COOP_LOBBY_LABELS[row]
+		if row == .Accept do label = fmt.ctprintf("Accept %s", partner_name)
+		disabled := row == .Ready && is_host && knocking
+		if disabled do color = COLOR_TEXT_DIM
+		if (row == .Accept && knocking) || (row == .Ready && awaiting_me) {
+			// Pulsing marker so the player cannot miss where to act.
+			rl.DrawRectangleRec({rect.x - 10, rect.y + 10, 5, rect.height - 20}, rl.Fade(COOP_ACCENT, pulse))
+			if !selected do color = rl.Fade(COOP_ACCENT, pulse)
+		}
+		ui_draw_text(label, i32(content.x), i32(rect.y + 7), 17, color)
 		value: cstring
 		#partial switch row {
 		case .Archetype: value = fmt.ctprintf("< %s >", ARCHETYPES[Archetype_Id(ui.select_index)].name)
 		case .Difficulty: value = fmt.ctprintf("< %s >", DIFFICULTY_PROFILES[s.difficulty].name)
 		case .Story: value = s.story ? "On" : "Off"
-		case .Ready: value = local.ready ? "Ready" : "Not ready"
-		case .Accept: value = fmt.ctprintf("%s", net_seat_name(&s.seats[1]))
+		case .Ready:
+			switch {
+			case disabled: value = "Accept your partner first"
+			case both_ready: value = "Starting..."
+			case local.ready && partner.present: value = fmt.ctprintf("Waiting for %s", net_seat_name(&s.seats[1 - local_slot]))
+			case local.ready: value = "Ready"
+			case: value = "Ready up"
+			}
 		}
 		if value != nil {
 			w := ui_measure_text(value, 17)
-			ui_draw_text(value, i32(content.x + content.width) - w, i32(rect.y + 9), 17, color)
+			ui_draw_text(value, i32(content.x + content.width) - w, i32(rect.y + 7), 17, color)
 		}
 	}
+
+	// ---- hints.
+	hint: cstring
+	hint_color := COLOR_TEXT_DIM
+	switch {
+	case is_host && knocking: hint = "Accept your partner to continue"
+	case !partner.present: hint = is_host ? "Waiting for a partner to join with the code" : "Waiting for the host"
+	case awaiting_me:
+		hint = fmt.ctprintf("%s is ready and waiting for you", net_seat_name(other))
+		hint_color = rl.Fade(COOP_ACCENT, pulse)
+	case !both_ready: hint = "Both players must ready up to begin"
+	case:
+		hint = "Starting the descent..."
+		hint_color = COOP_ACCENT
+	}
+	draw_centered(hint, center, panel.y + panel.height - 50, 15, hint_color)
 	if s.role == .Join {
 		settings := fmt.ctprintf("Host settings: %s, story %s", DIFFICULTY_PROFILES[s.difficulty].name, s.story ? "on" : "off")
-		draw_centered(settings, center, panel.y + panel.height - 62, 14, COLOR_TEXT_DIM)
+		draw_centered(settings, center, panel.y + panel.height - 30, 13, COLOR_TEXT_DIM)
+	} else {
+		draw_centered("Arrows: change   Enter: choose   Esc: leave", center, panel.y + panel.height - 30, 13, COLOR_TEXT_DIM)
 	}
-	draw_centered("Arrows: change   Enter: choose   Esc: leave", center, panel.y + panel.height - 38, 14, COLOR_TEXT_DIM)
 	_ = presentation
 }
 

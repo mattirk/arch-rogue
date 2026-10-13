@@ -301,6 +301,8 @@ try {
       }
       await page.waitFor('JSON.parse(UTF8ToString(Module._ar_web_smoke_probe())).mode === "Coop_Lobby"',
         { timeoutMs: 15000, label: 'co-op lobby after hosting' });
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await page.screenshot(path.join(evidenceDir, 'smoke-coop-lobby-host.png'));
       const coopDefects = consoleDefects(page);
       record('coop-host-lobby', coopDefects.length === 0,
         coopDefects.slice(0, 3).map((d) => `${d.type}: ${d.text.slice(0, 160)}`).join(' | ') || 'hosted a room, lobby reached, no defects');
@@ -351,6 +353,8 @@ try {
           await tap('Enter');                           // accept consent -> connect
           await page.waitFor('JSON.parse(UTF8ToString(Module._ar_web_smoke_probe())).mode === "Coop_Lobby"',
             { timeoutMs: 20000, label: 'joiner lobby' });
+          await new Promise((resolve) => setTimeout(resolve, 600));
+          await page.screenshot(path.join(evidenceDir, 'smoke-coop-lobby-join.png'));
           await tap('ArrowDown'); await tap('Enter');   // Ready
           await page.waitFor('JSON.parse(UTF8ToString(Module._ar_web_smoke_probe())).mode === "Playing"',
             { timeoutMs: 40000, label: 'co-op run started on the joiner' });

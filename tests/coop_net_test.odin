@@ -519,3 +519,4 @@ coop_net_guest_combat_session_is_smooth :: proc(t: ^testing.T) {
 	testing.expectf(t, m.corrections <= 4 && m.max_correction < .8, "%v corrections over 0.1 tiles (max %.3f)", m.corrections, m.max_correction)
 	testing.expectf(t, m.max_jump < .2, "drawn guest seat moved %.3f tiles in one tick", m.max_jump)
 }
+

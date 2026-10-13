@@ -248,7 +248,9 @@ coop_apply :: proc(app: ^App, intent: Intent, now_ms: i64) {
 		case .Story:
 			if intent.confirm || horizontal != 0 do net_session_settings(s, s.difficulty, !s.story)
 		case .Ready:
-			if intent.confirm {
+			// The host cannot ready up before admitting the knocking partner;
+			// the row says so instead of bouncing a relay rejection.
+			if intent.confirm && !(s.role == .Host && s.seats[1].present && !s.seats[1].admitted) {
 				if !local.chosen do net_session_select(s, Archetype_Id(ui.select_index))
 				seed := app.seed
 				app.seed = next_run_seed(seed)
@@ -275,6 +277,12 @@ coop_update_screens :: proc(app: ^App) {
 			app.coop_ui.lobby_row = 0
 			// Announce the remembered archetype so the partner sees a choice.
 			net_session_select(s, Archetype_Id(app.coop_ui.select_index))
+		}
+		// A fresh knock points the host at the Accept row and rings once.
+		if s.role == .Host && s.lobby_phase == .Admission && s.seat_gen != app.coop_ui.knock_gen {
+			app.coop_ui.knock_gen = s.seat_gen
+			app.coop_ui.lobby_row = 0 // Accept is always the first row during admission
+			app.coop_ui.knock_cue = true
 		}
 	case .Failed:
 		app.coop_ui.message = s.error_text != "" ? coop_intern(c, s.error_text) : "Connection failed"

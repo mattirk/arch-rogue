@@ -1259,6 +1259,8 @@ Coop_Ui_State :: struct {
 	select_index: int,
 	message:      string, // static or temp-safe status line
 	debug:        bool,   // F3 co-op network overlay
+	knock_gen:    i64,    // seat_gen of the last knock the host was pointed at
+	knock_cue:    bool,   // play the knock sound once (consumed by the platform frame)
 }
 
 // ------------------------------------------------------------ action seam --
