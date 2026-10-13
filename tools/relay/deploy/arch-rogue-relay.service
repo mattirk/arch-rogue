@@ -32,21 +32,21 @@ TimeoutStopSec=10
 # The relay writes nothing: rooms and tokens are memory-only, so it gets no
 # writable path at all, not even its own release directory.
 #
-# Deliberately absent: CapabilityBoundingSet= (a user manager under a
-# container manager cannot drop capabilities and the spawn fails with
-# status 218/CAPABILITIES; observed 2026-10-11 on the production host, and a
-# user unit holds no capabilities to begin with) and ProtectHostname= (UTS
-# namespaces are prohibited there; it only logs a warning per start).
+# Deliberately absent, because the production host's user manager runs
+# under a container manager that forbids dropping capabilities from the
+# bounding set (every spawn fails with status 218/CAPABILITIES, observed
+# 2026-10-11 and 2026-10-13): CapabilityBoundingSet=, and the directives that
+# imply a capability drop, PrivateDevices= (CAP_MKNOD/CAP_SYS_RAWIO),
+# ProtectKernelModules= (CAP_SYS_MODULE), ProtectKernelLogs= (CAP_SYSLOG),
+# ProtectClock= (CAP_SYS_TIME/CAP_WAKE_ALARM). A user unit holds none of those
+# capabilities anyway. ProtectHostname= is absent because UTS namespaces are
+# prohibited there and it only logs a warning per start.
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=read-only
-PrivateDevices=yes
 ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectKernelLogs=yes
 ProtectControlGroups=yes
-ProtectClock=yes
 RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
@@ -56,7 +56,6 @@ SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
-UMask=0077
 # lws sizes its fd table from --max-connections (default 512) + a margin.
 LimitNOFILE=4096
 MemoryMax=512M

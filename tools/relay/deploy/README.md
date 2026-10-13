@@ -77,6 +77,32 @@ unit's sandbox directives (`arch-rogue-relay.service`) limit what a
 compromised relay can do with the filesystem, kernel, and network but not
 which Unix user it is.
 
+## Why the unit's sandbox set is what it is (outage of 2026-10-11)
+
+The relay is a *user* unit, and the production host runs under a container
+manager that denies the user manager some privileged operations: the journal
+shows `UTS namespace setup is prohibited (container manager?)`, and every
+directive that drops capabilities from the bounding set
+(`CapabilityBoundingSet=`, `PrivateDevices=`, `ProtectKernelModules=`,
+`ProtectKernelLogs=`, `ProtectClock=`) makes the spawn fail with
+`Failed to drop capabilities: Operation not permitted`,
+`status=218/CAPABILITIES`. A desktop user manager performs the same drops
+without complaint, which is the trap. On a developer desktop the same
+unit starts fine, which is why the 2026-10-11 hardening commit passed local
+checks and took the service down for two days. The unit now carries only
+directives that work without privilege there; the capability hardening those
+directives would give is already a property of any user unit. Real capability
+and user isolation comes from the dedicated-user *system* unit listed under
+"Remaining hardening", not from more directives on this one.
+
+Before adding a directive to `arch-rogue-relay.service`, test it on the host:
+
+```bash
+systemd-run --user --unit=ar-relay-probe -p <Directive>=<value> \
+  ~/arch-rogue-relay/current/archrogue_relay --port 18765
+sleep 1; systemctl --user status ar-relay-probe --no-pager; systemctl --user stop ar-relay-probe
+```
+
 ## Log retention (privacy policy commitment)
 
 `website/privacy.html` promises that player IP addresses are not access-logged
