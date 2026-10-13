@@ -31,6 +31,12 @@ TimeoutStopSec=10
 # Hardening available to user units (security audit 2026-10-11, finding 5).
 # The relay writes nothing: rooms and tokens are memory-only, so it gets no
 # writable path at all, not even its own release directory.
+#
+# Deliberately absent: CapabilityBoundingSet= (a user manager under a
+# container manager cannot drop capabilities and the spawn fails with
+# status 218/CAPABILITIES; observed 2026-10-11 on the production host, and a
+# user unit holds no capabilities to begin with) and ProtectHostname= (UTS
+# namespaces are prohibited there; it only logs a warning per start).
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
@@ -41,7 +47,6 @@ ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectControlGroups=yes
 ProtectClock=yes
-ProtectHostname=yes
 RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
@@ -50,8 +55,7 @@ MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 UMask=0077
 # lws sizes its fd table from --max-connections (default 512) + a margin.
 LimitNOFILE=4096
