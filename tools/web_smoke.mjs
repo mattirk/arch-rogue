@@ -358,6 +358,7 @@ try {
           // landed last (2026-10-13: adoption used to unload the other seat).
           await page.waitFor('(() => { const a = JSON.parse(UTF8ToString(Module._ar_web_smoke_probe())).actors_resident.split(","); return a.includes("rogue") && a.includes("warden"); })()',
             { timeoutMs: 90000, label: 'both seats resident on the joiner' });
+          await page.screenshot(path.join(evidenceDir, 'smoke-coop-playing.png'));
           const joinState = await probe(page);
           const joinDefects = consoleDefects(page);
           record('coop-join-partner-sprite', joinDefects.length === 0 && joinState.packs_failed === 0,

@@ -289,23 +289,34 @@ draw_coop_hud :: proc(app: ^App, assets: ^Assets) {
 	partner_slot := 1 - run.local_slot
 	partner := &run.players[partner_slot]
 	name := net_start_name(&s.start, partner_slot)
-	box := rl.Rectangle{presentation.width - 268, 18, 250, 58}
-	rl.DrawRectangleRec(box, rl.Fade(rl.Color{12, 10, 18, 255}, .78))
-	rl.DrawRectangleLinesEx(box, 1, rl.Fade(COLOR_TITLE, .6))
+	// Same chrome as the minimap card, to its left with a gap, and sharing
+	// its top edge (the minimap sits at y 18, MINIMAP_CARD_WIDTH wide, 18 px
+	// from the right edge), so the two read as one HUD row.
+	box_w, box_h: f32 = 204, 56
+	box := rl.Rectangle{presentation.width - 18 - f32(MINIMAP_CARD_WIDTH) - 12 - box_w, 18, box_w, box_h}
+	panel := ui_chrome_asset(assets, .Hud_Panel)
+	content := rl.Rectangle{box.x + 8, box.y + 7, box.width - 16, box.height - 14}
+	if draw_ui_chrome(panel, box) {
+		if inner, ok := ui_chrome_content_rect(panel, box); ok do content = inner
+	} else {
+		rl.DrawRectangleRec(box, rl.Fade(rl.BLACK, .72))
+		rl.DrawRectangleLinesEx(box, 1, rl.Fade(rl.WHITE, .22))
+	}
 	label := fmt.ctprintf("%s - %s  Lv %v", name != "" ? name : "Partner", ARCHETYPES[partner.archetype].name, partner.level)
-	ui_draw_text(label, i32(box.x + 10), i32(box.y + 7), 15, COLOR_TEXT)
-	bar := rl.Rectangle{box.x + 10, box.y + 32, box.width - 20, 14}
+	ui_draw_text(label, i32(content.x + 2), i32(content.y + 1), 13, COLOR_TEXT)
+	bar := rl.Rectangle{content.x + 2, content.y + content.height - 13, content.width - 4, 11}
 	rl.DrawRectangleRec(bar, rl.Color{40, 20, 24, 255})
 	if partner.hp > 0 {
 		frac := clamp(f32(partner.hp) / f32(max(1, partner.max_hp)), 0, 1)
 		rl.DrawRectangleRec({bar.x, bar.y, bar.width * frac, bar.height}, rl.Color{186, 52, 46, 255})
 		hp := fmt.ctprintf("%v / %v", partner.hp, partner.max_hp)
-		ui_draw_text(hp, i32(bar.x + bar.width * .5) - ui_measure_text(hp, 12) / 2, i32(bar.y + 1), 12, rl.WHITE)
+		ui_draw_text(hp, i32(bar.x + bar.width * .5) - ui_measure_text(hp, 10) / 2, i32(bar.y), 10, rl.WHITE)
 	} else {
-		ui_draw_text("FALLEN", i32(bar.x + 6), i32(bar.y), 13, COOP_WARNING)
+		ui_draw_text("FALLEN", i32(bar.x + 4), i32(bar.y - 1), 11, COOP_WARNING)
 	}
 	if run.players[run.local_slot].raise_charges > 0 {
-		ui_draw_text(fmt.ctprintf("Raises: %v", run.players[run.local_slot].raise_charges), i32(box.x), i32(box.y + box.height + 4), 13, COLOR_TEXT_DIM)
+		// Aligned with the chrome's visible left edge, not the panel rectangle.
+		ui_draw_text(fmt.ctprintf("Raises: %v", run.players[run.local_slot].raise_charges), i32(content.x + 2), i32(box.y + box.height + 3), 12, COLOR_TEXT_DIM)
 	}
 
 	banner: cstring
