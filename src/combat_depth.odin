@@ -761,6 +761,45 @@ player_big_hit_fire :: proc(run: ^Run, slot: int) {
 		player.hp += heal
 		if heal > 0 do append(&run.numbers, Damage_Number{pos=player.pos, value=heal, kind=.Heal})
 	}
+	player_big_hit_shove_partner(run, slot, facing)
+}
+
+// Co-op: a partner standing in the Big Hit arc is shoved BIGHIT_SHOVE_TILES
+// along the swing for 1 damage that never kills (a dying teammate cannot be
+// finished this way). Players block each other's movement, so this is also
+// the escape from being boxed into a corner or a prop gap: when the partner
+// cannot be displaced at all, the two swap places instead. No RNG, no status.
+@(private = "file")
+player_big_hit_shove_partner :: proc(run: ^Run, slot: int, facing: Vec2) {
+	player := &run.players[slot]
+	for other in 0 ..< run_seat_count(run) {
+		if other == slot do continue
+		partner := &run.players[other]
+		if partner.hp <= 0 do continue
+		to := partner.pos - player.pos
+		distance := math.hypot(to.x, to.y)
+		if distance > PLAYER_MELEE_RANGE + PLAYER_HIT_RADIUS do continue
+		direction := distance < 0.001 ? facing : to / distance
+		if linalg.dot(direction, facing) <= PLAYER_MELEE_ARC_DOT do continue
+		if !line_of_sight(&run.dungeon, player.pos.x, player.pos.y, partner.pos.x, partner.pos.y) do continue
+		if partner.hp > 1 {
+			partner.hp -= 1
+			append(&run.numbers, Damage_Number{pos = partner.pos, value = 1, kind = .Damage_Taken})
+		}
+		mark_player_hit_flash(partner, 1)
+		sfx_emit(run, .Player_Hurt_Light, partner.pos, spatial = true)
+		// Pinned test: if a short probe along the shove cannot move the body on
+		// either axis, nothing a shove does will, so trade places.
+		probe := partner.pos
+		slide_move(&run.dungeon, &probe, direction * 0.35, block_stairs = true)
+		if probe == partner.pos {
+			partner.pos, player.pos = player.pos, partner.pos
+			partner.prev_pos, player.prev_pos = partner.pos, player.pos
+			partner.shove_vel = {}
+			continue
+		}
+		partner.shove_vel = direction * (BIGHIT_SHOVE_TILES * KNOCKBACK_DECAY_RATE)
+	}
 }
 
 tick_big_hit :: proc(run: ^Run, slot: int) {

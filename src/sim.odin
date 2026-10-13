@@ -166,6 +166,7 @@ Player :: struct {
 	raise_charges: int, // co-op: one per run; Vigil Shrines add more
 	hit_flash:    f32,
 	hit_flash_duration: f32,
+	shove_vel:    Vec2, // co-op: displacement from a partner's Big Hit, decays like knockback
 	level:        int,
 	xp:           int,
 	next_xp:      int,
@@ -1263,7 +1264,17 @@ tick_player :: proc(run: ^Run, slot: int, move: Vec2, max_move_step: f32) {
 	player.prev_pos = player.pos
 	if player.hp <= 0 {
 		player.moving = false
+		player.shove_vel = {}
 		return
+	}
+
+	// A partner's shove is pure displacement: it moves the body through the
+	// same wall-sliding path as locomotion and never cancels the action the
+	// player is in, mirroring enemy knockback (displacement, not stun).
+	if player.shove_vel != {} {
+		slide_move(&run.dungeon, &player.pos, player.shove_vel * SIM_DT, block_stairs = true)
+		player.shove_vel *= math.exp(-f32(KNOCKBACK_DECAY_RATE) * SIM_DT)
+		if math.hypot(player.shove_vel.x, player.shove_vel.y) < .01 do player.shove_vel = {}
 	}
 
 	player.moving = false
@@ -2579,6 +2590,16 @@ resolve_player_enemy_contacts :: proc(run: ^Run, slot: int) {
 
 resolve_player_friendly_contacts :: proc(run: ^Run, slot: int) {
 	if run == nil do return
+	// Co-op seats block each other like any other body: the mover is pushed
+	// out of the partner's radius. A fallen seat is passable so the living
+	// player can reach the body for Raise. The Big Hit shove (and its swap
+	// when the partner is pinned) is the deliberate way through.
+	for other in 0 ..< run_seat_count(run) {
+		if other == slot do continue
+		partner := &run.players[other]
+		if partner.hp <= 0 do continue
+		resolve_player_body_contact(run, slot, partner.pos, PLAYER_HIT_RADIUS)
+	}
 	if run.has_shopkeeper do resolve_player_body_contact(run, slot, run.shopkeeper.pos, ROOM_NPC_RADIUS)
 	for i in 0 ..< min(run.ambient_residents.count, len(run.ambient_residents.items)) {
 		resident := &run.ambient_residents.items[i]

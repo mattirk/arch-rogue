@@ -847,6 +847,9 @@ BIGHIT_CANCEL_COOLDOWN :: 1.5
 BIGHIT_STAMINA_COST :: 20
 BIGHIT_DAMAGE_MULT :: 3.0
 BIGHIT_THROW_TILES :: 2.0
+// Co-op: a Big Hit that catches the partner in its arc shoves them this far
+// (same decay curve as an enemy throw) for 1 non-lethal damage.
+BIGHIT_SHOVE_TILES :: 1.5
 BIGHIT_THROW_TILES_RANGER :: 2.2
 BIGHIT_BOSS_THROW_FACTOR :: 0.35
 BIGHIT_CLEAVE_FACTOR :: 0.62

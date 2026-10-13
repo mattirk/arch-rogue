@@ -306,3 +306,77 @@ coop_boss_arena_entry_gathers_the_party :: proc(t: ^testing.T) {
 	testing.expect(t, room.x <= int(p1.x) && int(p1.x) < room.x + room.w && room.y <= int(p1.y) && int(p1.y) < room.y + room.h,
 		"fallen partner was not gathered into the arena")
 }
+
+
+// ------------------------------------------------------ blocking and shoves --
+
+@(test)
+coop_players_block_each_other :: proc(t: ^testing.T) {
+	run: ar.Run
+	defer ar.run_destroy(&run)
+	coop_arena(&run)
+	run.players[0].pos = {10.5, 10.5}
+	run.players[1].pos = {12.5, 10.5}
+	for slot in 0 ..< 2 do run.players[slot].prev_pos = run.players[slot].pos
+	// Seat 0 walks east into the stationary partner for two seconds.
+	tick_moves(&run, {1, 0}, {}, 120)
+	gap := run.players[1].pos.x - run.players[0].pos.x
+	testing.expectf(t, gap >= 2 * ar.PLAYER_HIT_RADIUS - 0.01, "mover should stop at contact distance, gap %.3f", gap)
+	testing.expectf(t, math.abs(run.players[1].pos.x - 12.5) < 0.01, "stationary partner must not be pushed by walking, x %.3f", run.players[1].pos.x)
+	// A fallen partner is passable so Raise can reach the body.
+	run.players[1].hp = 0
+	tick_moves(&run, {1, 0}, {}, 90)
+	testing.expectf(t, run.players[0].pos.x > 12.5, "living seat should walk through a fallen partner, x %.3f", run.players[0].pos.x)
+}
+
+@(test)
+coop_big_hit_shoves_partner_for_one_nonlethal_damage :: proc(t: ^testing.T) {
+	run: ar.Run
+	defer ar.run_destroy(&run)
+	coop_arena(&run)
+	run.players[0].pos = {10.5, 10.5}
+	run.players[0].facing = {1, 0}
+	run.players[1].pos = {11.5, 10.5}
+	run.players[1].hp = 5
+	for slot in 0 ..< 2 do run.players[slot].prev_pos = run.players[slot].pos
+	start_x := run.players[1].pos.x
+	testing.expect(t, ar.player_big_hit_begin(&run, 0, {1, 0}), "big hit should start")
+	tick_moves(&run, {}, {}, int(ar.BIGHIT_CHARGE_TIME / ar.SIM_DT) + 2)
+	testing.expectf(t, run.players[1].hp == 4, "partner takes exactly 1 damage, hp %d", run.players[1].hp)
+	tick_moves(&run, {}, {}, 60)
+	moved := run.players[1].pos.x - start_x
+	testing.expectf(t, moved > 1.0 && moved < ar.BIGHIT_SHOVE_TILES + 0.2, "partner shoved along the swing, moved %.3f tiles", moved)
+	testing.expect(t, run.players[0].hp == run.players[0].max_hp, "shover is unharmed")
+	// Never lethal: at 1 HP the shove still displaces but deals nothing.
+	run.players[0].pos = {10.5, 10.5}
+	run.players[1].pos = {11.5, 10.5}
+	run.players[1].hp = 1
+	run.players[0].bighit_timer = 0
+	run.players[0].stamina = f32(run.players[0].max_stamina)
+	testing.expect(t, ar.player_big_hit_begin(&run, 0, {1, 0}))
+	tick_moves(&run, {}, {}, int(ar.BIGHIT_CHARGE_TIME / ar.SIM_DT) + 2)
+	testing.expectf(t, run.players[1].hp == 1, "shove must not kill a 1 HP partner, hp %d", run.players[1].hp)
+}
+
+@(test)
+coop_big_hit_swaps_places_with_a_pinned_partner :: proc(t: ^testing.T) {
+	run: ar.Run
+	defer ar.run_destroy(&run)
+	coop_arena(&run)
+	// Tile (4,4) is the room's north-west corner: walls at x=3 and y=3.
+	pinned := ar.Vec2{4.5, 4.5}
+	shover := ar.Vec2{5.3, 5.3}
+	run.players[1].pos = pinned
+	run.players[0].pos = shover
+	aim := ar.Vec2{-1, -1}
+	run.players[0].facing = aim
+	for slot in 0 ..< 2 do run.players[slot].prev_pos = run.players[slot].pos
+	testing.expect(t, ar.player_big_hit_begin(&run, 0, aim))
+	tick_moves(&run, {}, {}, int(ar.BIGHIT_CHARGE_TIME / ar.SIM_DT) + 2)
+	// The corner cannot absorb a shove on either axis, so the pair traded places.
+	d0 := run.players[0].pos - pinned
+	d1 := run.players[1].pos - shover
+	testing.expectf(t, math.hypot(d0.x, d0.y) < 0.35, "shover should now stand in the corner, pos %v", run.players[0].pos)
+	testing.expectf(t, math.hypot(d1.x, d1.y) < 0.35, "pinned partner should now stand where the shover was, pos %v", run.players[1].pos)
+	testing.expect(t, run.players[1].shove_vel == {}, "a swap carries no residual shove")
+}

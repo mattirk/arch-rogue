@@ -102,7 +102,7 @@ w_i :: proc(w: ^np.Json_Writer, i: int) {
 	np.jw_elem_int(w, i64(i))
 }
 
-PLAYER_FAST_FIELDS :: 42 + len(Status_Kind)
+PLAYER_FAST_FIELDS :: 44 + len(Status_Kind)
 
 @(private = "file")
 encode_player_fast :: proc(w: ^np.Json_Writer, p: ^Player) {
@@ -122,6 +122,7 @@ encode_player_fast :: proc(w: ^np.Json_Writer, p: ^Player) {
 	w_i(w, p.max_stamina)
 	w_f(w, p.hit_flash)
 	w_f(w, p.hit_flash_duration)
+	w_vec(w, p.shove_vel)
 	w_f(w, p.bighit_charge)
 	w_f(w, p.swing_timer)
 	w_f(w, p.melee_commit_timer)
@@ -566,6 +567,7 @@ coop_decode_player_fast :: proc(v: json.Value, p: ^Player) -> bool {
 	q.max_stamina = ai(arr, &i, 0, 1_000_000, &ok)
 	q.hit_flash = af(arr, &i, 0, 10, &ok)
 	q.hit_flash_duration = af(arr, &i, 0, 10, &ok)
+	q.shove_vel = av(arr, &i, &ok)
 	q.bighit_charge = af(arr, &i, -10, 100, &ok)
 	q.swing_timer = af(arr, &i, -10, 100, &ok)
 	q.melee_commit_timer = af(arr, &i, -10, 100, &ok)
