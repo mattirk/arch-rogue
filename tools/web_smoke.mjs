@@ -354,10 +354,20 @@ try {
           await tap('ArrowDown'); await tap('Enter');   // Ready
           await page.waitFor('JSON.parse(UTF8ToString(Module._ar_web_smoke_probe())).mode === "Playing"',
             { timeoutMs: 40000, label: 'co-op run started on the joiner' });
-          await page.waitForConsole(/ARCH_ROGUE_WEB_ACTOR activated archetype=rogue/, { timeoutMs: 90000 });
+          // Both seats must end up GPU-resident regardless of which pack
+          // landed last (2026-10-13: adoption used to unload the other seat).
+          await page.waitFor('(() => { const a = JSON.parse(UTF8ToString(Module._ar_web_smoke_probe())).actors_resident.split(","); return a.includes("rogue") && a.includes("warden"); })()',
+            { timeoutMs: 90000, label: 'both seats resident on the joiner' });
+          const joinState = await probe(page);
           const joinDefects = consoleDefects(page);
-          record('coop-join-partner-sprite', joinDefects.length === 0,
-            joinDefects.slice(0, 3).map((d) => `${d.type}: ${d.text.slice(0, 160)}`).join(' | ') || `joined ${code}, run started, partner Rogue pack activated`);
+          record('coop-join-partner-sprite', joinDefects.length === 0 && joinState.packs_failed === 0,
+            joinDefects.slice(0, 3).map((d) => `${d.type}: ${d.text.slice(0, 160)}`).join(' | ') || `joined ${code}, run started, resident=${joinState.actors_resident}`);
+          // Greedy prefetch: every archetype pack should be resident by now.
+          await page.waitFor('JSON.parse(UTF8ToString(Module._ar_web_smoke_probe())).packs_resident >= 5',
+            { timeoutMs: 30000, label: 'all archetype packs prefetched' });
+          const prefetched = await probe(page);
+          record('archetype-prefetch', prefetched.packs_resident >= 5 && prefetched.packs_failed === 0,
+            `resident=${prefetched.packs_resident} failed=${prefetched.packs_failed}`);
         } finally {
           bot.kill();
         }

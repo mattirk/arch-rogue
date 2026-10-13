@@ -635,6 +635,60 @@ web_packs: map[string]Web_Pack_Status
 @(private = "file")
 web_pack_adoptions: [dynamic]Web_Pack_Adoption_Job
 
+// A failed fetch is retried a few times with a growing delay instead of
+// staying Failed for the rest of the session (which left a partner's
+// sprites missing for a whole run after one dropped request).
+WEB_PACK_MAX_RETRIES  :: 3
+WEB_PACK_RETRY_FRAMES :: 180 // ~3 s at 60 fps, multiplied by the attempt number
+
+@(private = "file")
+Web_Pack_Retry :: struct {
+	attempts:  int,
+	due_frame: int,
+}
+
+@(private = "file")
+web_pack_retries: map[string]Web_Pack_Retry
+
+@(private = "file")
+web_pack_retry_set :: proc(name: string, retry: Web_Pack_Retry) {
+	if existing, exists := &web_pack_retries[name]; exists {
+		existing^ = retry
+		return
+	}
+	web_pack_retries[strings.clone(name)] = retry
+}
+
+@(private = "file")
+web_pack_retries_tick :: proc(frame: int) {
+	for name, &retry in web_pack_retries {
+		if web_packs[name] != .Failed || retry.due_frame == 0 || frame < retry.due_frame do continue
+		retry.due_frame = 0
+		platform_log(fmt.tprintf("ARCH_ROGUE_WEB_PACK retry name=%s attempt=%d", name, retry.attempts))
+		web_pack_request(name)
+	}
+}
+
+// Greedy background prefetch. The audited initial download stays as it is;
+// these start after boot so a co-op partner's sprites are normally resident
+// before anyone presses Host (human decision 2026-10-13).
+web_packs_prefetch_archetypes :: proc() {
+	for id in Archetype_Id do web_pack_request(fmt.tprintf("archetype-%s", ARCHETYPES[id].sprite))
+}
+
+web_packs_prefetch_run :: proc() {
+	web_pack_request("social")
+	web_pack_request("bosses")
+	web_pack_request("sfx-world")
+}
+
+// Comma-separated sprite names of the archetypes whose clips are resident.
+web_actors_resident_text :: proc(assets: ^Assets, allocator := context.temp_allocator) -> string {
+	names := make([dynamic]string, 0, len(Archetype_Id), allocator)
+	for id in Archetype_Id do if assets_archetype_resident(assets, id) do append(&names, ARCHETYPES[id].sprite)
+	return strings.join(names[:], ",", allocator)
+}
+
 @(private = "file")
 web_pack_set :: proc(name: string, status: Web_Pack_Status) {
 	if existing, exists := &web_packs[name]; exists {
@@ -658,6 +712,9 @@ web_pack_adoptions_shutdown :: proc() {
 	for &job in web_pack_adoptions do web_pack_adoption_job_destroy(&job)
 	delete(web_pack_adoptions)
 	web_pack_adoptions = nil
+	for key in web_pack_retries do delete(key)
+	delete(web_pack_retries)
+	web_pack_retries = nil
 }
 
 web_pack_request :: proc(name: string) {
@@ -674,37 +731,52 @@ web_packs_on_run_start :: proc(archetype: Archetype_Id) {
 	web_pack_request("sfx-world")
 }
 
+// Actor sprites and SFX banks adopt through independent lanes, one item per
+// frame each, so a pack full of banks never holds a partner's sprites back.
+// Actor uploads still wait for a quiet SFX window (main-thread mixer).
 web_pack_adoptions_tick :: proc(rt: ^Game_Runtime) {
-	if rt == nil || len(web_pack_adoptions) == 0 || audio_any_cue_playing(&rt.audio) do return
-	job := &web_pack_adoptions[0]
-	if job.next_actor < job.actor_count {
-		actor_index := job.next_actor
-		app := &rt.app
-		active_valid := app.run.run_id != "" || app.mode == .Playing || app.mode == .Resume_Veil || coop_active(app)
-		active: bit_set[Archetype_Id] = {app.run.players[app.run.local_slot].archetype}
-		if coop_active(app) && app.run.player_count == MAX_PLAYERS {
-			for slot in 0 ..< MAX_PLAYERS do active += {app.run.players[slot].archetype}
+	if rt == nil do return
+	web_pack_retries_tick(rt.frame_count)
+	if len(web_pack_adoptions) == 0 do return
+	if !audio_any_cue_playing(&rt.audio) {
+		for &job in web_pack_adoptions {
+			if job.next_actor >= job.actor_count do continue
+			actor_index := job.next_actor
+			app := &rt.app
+			active_valid := app.run.run_id != "" || app.mode == .Playing || app.mode == .Resume_Veil || coop_active(app)
+			active: bit_set[Archetype_Id] = {app.run.players[app.run.local_slot].archetype}
+			if coop_active(app) && app.run.player_count == MAX_PLAYERS {
+				for slot in 0 ..< MAX_PLAYERS do active += {app.run.players[slot].archetype}
+			}
+			assets_web_adopt_actors(&rt.assets, job.actors[actor_index:actor_index+1], active, active_valid)
+			job.next_actor += 1
+			break
 		}
-		assets_web_adopt_actors(&rt.assets, job.actors[actor_index:actor_index+1], active, active_valid)
-		job.next_actor += 1
 	}
-	if job.next_actor < job.actor_count do return
-	if job.next_sfx_bank < job.sfx_bank_count {
-		sfx_index := job.next_sfx_bank
-		if !audio_web_adopt_sfx_bank(&rt.audio, job.sfx_banks[sfx_index]) do return
-		job.next_sfx_bank += 1
+	if rt.audio.ready {
+		for &job in web_pack_adoptions {
+			if job.next_sfx_bank >= job.sfx_bank_count do continue
+			if audio_web_adopt_sfx_bank(&rt.audio, job.sfx_banks[job.next_sfx_bank]) do job.next_sfx_bank += 1
+			break
+		}
 	}
-	if job.next_sfx_bank < job.sfx_bank_count do return
-
-	web_pack_set(job.name, .Resident)
-	platform_log(fmt.tprintf(
-		"ARCH_ROGUE_WEB_PACK resident name=%s actors=%d sfx_banks=%d",
-		job.name,
-		job.actor_count,
-		job.sfx_bank_count,
-	))
-	web_pack_adoption_job_destroy(job)
-	ordered_remove(&web_pack_adoptions, 0)
+	for i := 0; i < len(web_pack_adoptions); {
+		job := &web_pack_adoptions[i]
+		if job.next_actor < job.actor_count || job.next_sfx_bank < job.sfx_bank_count {
+			i += 1
+			continue
+		}
+		web_pack_set(job.name, .Resident)
+		web_pack_retry_set(job.name, {})
+		platform_log(fmt.tprintf(
+			"ARCH_ROGUE_WEB_PACK resident name=%s actors=%d sfx_banks=%d",
+			job.name,
+			job.actor_count,
+			job.sfx_bank_count,
+		))
+		web_pack_adoption_job_destroy(job)
+		ordered_remove(&web_pack_adoptions, i)
+	}
 }
 
 @(export)
@@ -722,7 +794,15 @@ ar_web_pack_loaded :: proc "c" (
 	name := string(name_ptr[:name_len])
 	if ok == 0 {
 		web_pack_set(name, .Failed)
-		platform_log(fmt.tprintf("ARCH_ROGUE_WEB_PACK failed name=%s", name))
+		retry := web_pack_retries[name]
+		if retry.attempts < WEB_PACK_MAX_RETRIES {
+			retry.attempts += 1
+			retry.due_frame = max(1, web_runtime.frame_count + WEB_PACK_RETRY_FRAMES * retry.attempts)
+			web_pack_retry_set(name, retry)
+			platform_log(fmt.tprintf("ARCH_ROGUE_WEB_PACK failed name=%s; retry %d/%d scheduled", name, retry.attempts, WEB_PACK_MAX_RETRIES))
+		} else {
+			platform_log(fmt.tprintf("ARCH_ROGUE_WEB_PACK failed name=%s; giving up after %d retries", name, WEB_PACK_MAX_RETRIES))
+		}
 		return
 	}
 
@@ -805,6 +885,8 @@ ar_web_smoke_probe :: proc "c" () -> [^]u8 {
 	right_trigger := false
 	packs_resident := 0
 	packs_adopting := 0
+	packs_failed := 0
+	actors_resident := ""
 	facing: Vec2
 	aim_input: Vec2
 	aim_live := false
@@ -846,12 +928,14 @@ ar_web_smoke_probe :: proc "c" () -> [^]u8 {
 	for _, status in web_packs {
 		if status == .Resident do packs_resident += 1
 		if status == .Adopting do packs_adopting += 1
+		if status == .Failed do packs_failed += 1
 	}
+	if web_runtime != nil do actors_resident = web_actors_resident_text(&web_runtime.assets)
 	encoded := fmt.bprintf(
 		web_probe_buffer[:len(web_probe_buffer)-1],
-		"{{\"state\":\"%v\",\"mode\":\"%s\",\"audio_ready\":%v,\"audio_playing\":%v,\"storage_ready\":%v,\"resume_available\":%v,\"run_active\":%v,\"modal_open\":%v,\"depth\":%d,\"frame_count\":%d,\"gamepad\":%v,\"left_trigger\":%v,\"right_trigger\":%v,\"packs_resident\":%d,\"packs_adopting\":%d,\"screen_w\":%d,\"screen_h\":%d,\"heap_dynamic_bytes\":%d,\"hydrated\":%v,\"facing_x\":%.4f,\"facing_y\":%.4f,\"aim_x\":%.4f,\"aim_y\":%.4f,\"aim_live\":%v,\"keyboard_aim\":%v,\"bolt_cooldown\":%.3f,\"music_mix\":\"%s\",\"music_phase_ms\":%.0f,\"music_streams\":%d,\"music_layers\":%d,\"music_callbacks\":%d,\"music_recoveries\":%d}}",
+		"{{\"state\":\"%v\",\"mode\":\"%s\",\"audio_ready\":%v,\"audio_playing\":%v,\"storage_ready\":%v,\"resume_available\":%v,\"run_active\":%v,\"modal_open\":%v,\"depth\":%d,\"frame_count\":%d,\"gamepad\":%v,\"left_trigger\":%v,\"right_trigger\":%v,\"packs_resident\":%d,\"packs_adopting\":%d,\"packs_failed\":%d,\"actors_resident\":\"%s\",\"screen_w\":%d,\"screen_h\":%d,\"heap_dynamic_bytes\":%d,\"hydrated\":%v,\"facing_x\":%.4f,\"facing_y\":%.4f,\"aim_x\":%.4f,\"aim_y\":%.4f,\"aim_live\":%v,\"keyboard_aim\":%v,\"bolt_cooldown\":%.3f,\"music_mix\":\"%s\",\"music_phase_ms\":%.0f,\"music_streams\":%d,\"music_layers\":%d,\"music_callbacks\":%d,\"music_recoveries\":%d}}",
 		web_boot_state, mode, audio_ready, audio_playing, storage_ready, resume_available, run_active,
-		modal_open, depth, frame_count, gamepad, left_trigger, right_trigger, packs_resident, packs_adopting,
+		modal_open, depth, frame_count, gamepad, left_trigger, right_trigger, packs_resident, packs_adopting, packs_failed, actors_resident,
 		int(rl.GetScreenWidth()), int(rl.GetScreenHeight()),
 		web_dynamic_heap_bytes(), web_store_hydrated,
 		facing.x, facing.y, aim_input.x, aim_input.y, aim_live, keyboard_aim, bolt_cooldown,

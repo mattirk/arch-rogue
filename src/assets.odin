@@ -2190,6 +2190,38 @@ assets_activate_player :: proc(assets: ^Assets, selected: Archetype_Id) {
 	assets_activate_players(assets, {selected})
 }
 
+// True when every authored clip of this archetype is GPU-resident.
+assets_archetype_resident :: proc(assets: ^Assets, id: Archetype_Id) -> bool {
+	if assets == nil do return false
+	sprites := &assets.archetypes[id]
+	for kind in Clip_Kind {
+		if kind == .Preview_Idle do continue
+		clip := &sprites.clips[kind]
+		if clip.frames > 0 && !clip.valid do return false
+	}
+	return true
+}
+
+// Additive: loads this archetype's clip set if any clip is missing and leaves
+// every other archetype untouched. Pack adoption must use this and never the
+// activate_* family, which unloads the archetypes that are not in its set:
+// on web that wiped the partner's sprites each time a pack arrived, so the
+// last pack to land was the only seat drawn (found 2026-10-13).
+assets_ensure_archetype_clips :: proc(assets: ^Assets, id: Archetype_Id) -> bool {
+	if assets == nil do return false
+	if assets_archetype_resident(assets, id) do return true
+	sprites := &assets.archetypes[id]
+	for kind in Clip_Kind {
+		if kind == .Preview_Idle do continue
+		clip := &sprites.clips[kind]
+		if clip.tex.id != 0 do rl.UnloadTexture(clip.tex)
+		clip.tex = {}
+		clip.valid = false
+	}
+	assets_load_archetype_clips(assets, id)
+	return assets_archetype_resident(assets, id)
+}
+
 // Keeps full clip sets resident only for the archetypes on the field: one for
 // solo, up to two in co-op (duplicates allowed).
 assets_activate_players :: proc(assets: ^Assets, selected: bit_set[Archetype_Id]) {
@@ -2323,8 +2355,8 @@ assets_web_adopt_archetype :: proc(assets: ^Assets, manifest: ^Baked_Manifest, n
 		// local seat, plus the partner's seat in co-op (2026-10-11: the partner
 		// stayed a fallback disc because only the local archetype adopted).
 		if active_valid && id in active {
-			assets_activate_player(assets, id)
-			platform_log(fmt.tprintf("ARCH_ROGUE_WEB_ACTOR activated archetype=%s", name))
+			ok := assets_ensure_archetype_clips(assets, id)
+			platform_log(fmt.tprintf("ARCH_ROGUE_WEB_ACTOR activated archetype=%s resident=%v", name, ok))
 		}
 		return true
 	}

@@ -1110,6 +1110,9 @@ game_init :: proc(rt: ^Game_Runtime, boot: Game_Boot_Config) -> bool {
 		// The Clanker sheets live in the lazy social pack normally fetched at
 		// run start; the first-boot scene wants them streaming immediately.
 		if rt.app.mode == .Story_Decision do web_pack_request("social")
+		// Greedy background prefetch of every archetype pack right after boot,
+		// so co-op partners are normally resident before Host is pressed.
+		web_packs_prefetch_archetypes()
 	}
 	if rt.fixed_capture || rt.perf_enabled {
 		// Validation profiles are complete and ephemeral: persisted user graphics,
@@ -1415,6 +1418,9 @@ game_frame :: proc(rt: ^Game_Runtime) -> bool {
 		if mode_was != app.mode && app.mode == .Playing && (mode_was == .Select || mode_was == .Resume_Veil) {
 			web_packs_on_run_start(app.run.players[app.run.local_slot].archetype)
 		}
+		// The co-op menu is the earliest point a run is likely: prefetch the
+		// run packs too, while the lobby is still being set up.
+		if mode_was != app.mode && app.mode == .Coop_Menu do web_packs_prefetch_run()
 	}
 	if card(app.platform_effects) > 0 {
 		effects := app.platform_effects
